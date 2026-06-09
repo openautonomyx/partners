@@ -1,0 +1,169 @@
+name: Validate Partner Network
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+      - 'rfc/**'
+      - 'draft/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  markdown:
+    name: Markdown checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install markdownlint
+        run: npm install -g markdownlint-cli
+
+      - name: Run markdownlint
+        run: markdownlint '**/*.md' --ignore node_modules --ignore .git
+
+  yaml:
+    name: YAML checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate YAML files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+          import yaml
+
+          failed = False
+          for path in Path('.').rglob('*.yaml'):
+              if '.git' in path.parts:
+                  continue
+              try:
+                  yaml.safe_load(path.read_text())
+              except Exception as exc:
+                  print(f'YAML error in {path}: {exc}')
+                  failed = True
+
+          for path in Path('.').rglob('*.yml'):
+              if '.git' in path.parts:
+                  continue
+              try:
+                  yaml.safe_load(path.read_text())
+              except Exception as exc:
+                  print(f'YAML error in {path}: {exc}')
+                  failed = True
+
+          if failed:
+              sys.exit(1)
+          PY
+
+  registry-structure:
+    name: Registry structure checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require registry directories
+        run: |
+          required_dirs=(
+            registry/partners
+            registry/solutions
+            registry/connectors
+            registry/policy-packs
+            registry/training
+          )
+
+          for dir in "${required_dirs[@]}"; do
+            if [ ! -d "$dir" ]; then
+              echo "Missing required directory: $dir"
+              exit 1
+            fi
+          done
+
+  required-docs:
+    name: Required documentation checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Require foundation docs
+        run: |
+          required_files=(
+            README.md
+            RFC.md
+            docs/partner-model.md
+            docs/certification.md
+            docs/governance.md
+          )
+
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "Missing required file: $file"
+              exit 1
+            fi
+          done
+
+  policy-language:
+    name: Policy language checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prevent final-policy language in draft RFC
+        run: |
+          if [ -f RFC.md ]; then
+            if grep -Eiq 'this is final|approved policy|must be treated as final|binding policy' RFC.md; then
+              echo "RFC.md contains final-policy language. Draft RFCs must stay reviewable."
+              exit 1
+            fi
+          fi
+
+  registry-metadata:
+    name: Registry metadata checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate registry YAML metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+          import yaml
+
+          required_by_area = {
+              'registry/partners': ['name', 'type', 'status', 'contact', 'certification_status'],
+              'registry/solutions': ['name', 'publisher', 'license', 'support_owner', 'certification_status'],
+              'registry/connectors': ['name', 'publisher', 'auth_model', 'data_scope', 'certification_status'],
+              'registry/policy-packs': ['name', 'publisher', 'policy_domain', 'license', 'certification_status'],
+              'registry/training': ['name', 'provider', 'audience', 'certification_status'],
+          }
+
+          failed = False
+          for area, required_keys in required_by_area.items():
+              root = Path(area)
+              if not root.exists():
+                  continue
+              for path in list(root.glob('*.yaml')) + list(root.glob('*.yml')):
+                  data = yaml.safe_load(path.read_text()) or {}
+                  missing = [key for key in required_keys if key not in data]
+                  if missing:
+                      print(f'{path} missing required keys: {missing}')
+                      failed = True
+
+          if failed:
+              sys.exit(1)
+          PY
