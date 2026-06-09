@@ -1,0 +1,16 @@
+# Autonomyx Partner Network Review Ownership
+#
+# These ownership rules are intended to work with GitHub branch protection.
+# Enable "Require review from Code Owners" on main for enforcement.
+
+* @openautonomyx
+
+/docs/ @openautonomyx
+/rfcs/ @openautonomyx
+/RFC.md @openautonomyx
+/registry/ @openautonomyx
+/templates/ @openautonomyx
+/programs/ @openautonomyx
+/.github/workflows/ @openautonomyx
+/CODEOWNERS @openautonomyx
+/ENFORCEMENT.md @openautonomyx
